@@ -1,0 +1,13 @@
+[project]
+name = "mem0-mcp"
+version = "0.1.0"
+description = "MCP server for mem0 memory operations - allows AI agents to store and retrieve memories"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp>=2.0.0",
+    "mem0ai>=0.1.0",
+]
+
+[project.scripts]
+mem0-mcp = "main:main"
