@@ -64,6 +64,9 @@ def get_graph_memory() -> Memory:
         - OpenAI LLM for entity/relation extraction
         - Qdrant Cloud as vector store
         - Neo4j Aura as graph store
+
+    Raises:
+        ValueError: If required environment variables are missing or invalid
     """
     # Validate required environment variables
     openai_api_key = os.environ.get("OPENAI_API_KEY")
@@ -72,26 +75,42 @@ def get_graph_memory() -> Memory:
             "OPENAI_API_KEY environment variable is required for graph memory"
         )
 
-    qdrant_url = os.environ.get("QDRANT_URL")
-    qdrant_api_key = os.environ.get("QDRANT_API_KEY")
+    qdrant_url = os.environ.get("QDRANT_URL", "").strip()
+    qdrant_api_key = os.environ.get("QDRANT_API_KEY", "").strip()
     if not qdrant_url or not qdrant_api_key:
         raise ValueError(
             "QDRANT_URL and QDRANT_API_KEY environment variables are required for graph memory"
         )
 
-    neo4j_uri = os.environ.get("NEO4J_URI")
-    neo4j_user = os.environ.get("NEO4J_USER")
-    neo4j_password = os.environ.get("NEO4J_PASSWORD")
+    neo4j_uri = os.environ.get("NEO4J_URI", "").strip()
+    neo4j_user = os.environ.get("NEO4J_USER", "").strip()
+    neo4j_password = os.environ.get("NEO4J_PASSWORD", "").strip()
     if not neo4j_uri or not neo4j_user or not neo4j_password:
         raise ValueError(
             "NEO4J_URI, NEO4J_USER, and NEO4J_PASSWORD environment variables are required for graph memory"
         )
+
+    # Validate Neo4j URI format (should start with neo4j:// or neo4j+s://)
+    if not neo4j_uri.startswith(("neo4j://", "neo4j+s://", "bolt://", "bolt+s://")):
+        raise ValueError(
+            f"Invalid NEO4J_URI format: {neo4j_uri}. "
+            "Expected format: neo4j+s://<instance-id>.databases.neo4j.io (for Aura) "
+            "or neo4j://<host>:<port> (for self-hosted)"
+        )
+
+    # Log connection attempt (without sensitive data)
+    print(
+        f"[Graph Memory] Connecting to Neo4j at: {neo4j_uri.split('@')[-1] if '@' in neo4j_uri else neo4j_uri[:50]}..."
+    )
+    print("[Graph Memory] Using database: neo4j")
+    print(f"[Graph Memory] Qdrant URL: {qdrant_url[:50]}...")
 
     # Optional: collection name (defaults to "mem0" if not specified)
     # If you manually create a collection in Qdrant, set QDRANT_COLLECTION_NAME
     qdrant_collection_name = os.environ.get("QDRANT_COLLECTION_NAME", "mem0")
 
     config = {
+        "version": "v1.1",  # Required for graph_store support
         "llm": {
             "provider": "openai",
             "config": {
@@ -116,10 +135,38 @@ def get_graph_memory() -> Memory:
                 "url": neo4j_uri,
                 "username": neo4j_user,
                 "password": neo4j_password,
+                "database": "neo4j",
             },
         },
     }
-    return Memory.from_config(config)
+
+    try:
+        memory = Memory.from_config(config)
+        print(
+            "[Graph Memory] Successfully initialized graph memory with Qdrant + Neo4j"
+        )
+        return memory
+    except ValueError as e:
+        error_msg = str(e)
+        if (
+            "Could not connect to Neo4j" in error_msg
+            or "authentication" in error_msg.lower()
+        ):
+            print(f"[Graph Memory] Neo4j Connection Error: {error_msg}")
+            print("[Graph Memory] Troubleshooting:")
+            print(f"  - Verify NEO4J_URI format: {neo4j_uri[:50]}...")
+            print(f"  - Check NEO4J_USER: {neo4j_user}")
+            print(
+                f"  - Verify NEO4J_PASSWORD is set (length: {len(neo4j_password)} chars)"
+            )
+            print("  - Ensure Neo4j Aura instance is running")
+            print("  - Check if credentials match Aura dashboard")
+        raise
+    except Exception as e:
+        print(
+            f"[Graph Memory] Unexpected error during initialization: {type(e).__name__}: {e}"
+        )
+        raise
 
 
 def get_default_project() -> Optional[str]:
