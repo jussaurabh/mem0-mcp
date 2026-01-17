@@ -38,8 +38,6 @@ mcp = FastMCP(
     - delete_memory: Remove a memory
     - list_memories: List all memories for a project
     """,
-    # host=HTTP_HOST,
-    port=HTTP_PORT,
 )
 
 
@@ -293,7 +291,7 @@ def main():
 ╚══════════════════════════════════════════════════════════════╝
     """)
 
-    mcp.run(transport="sse")
+    mcp.run(transport="sse", host=HTTP_HOST, port=HTTP_PORT)
 
 
 if __name__ == "__main__":
