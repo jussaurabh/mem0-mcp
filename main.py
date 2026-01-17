@@ -201,7 +201,7 @@ def update_memory(memory_id: str, content: str) -> dict:
     """
     client = get_mem0_client()
 
-    result = client.update(memory_id=memory_id, data=content)
+    result = client.update(memory_id=memory_id, text=content)
 
     return {
         "status": "success",
