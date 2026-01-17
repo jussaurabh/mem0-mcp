@@ -90,6 +90,22 @@ def get_graph_memory() -> Memory:
             "NEO4J_URI, NEO4J_USER, and NEO4J_PASSWORD environment variables are required for graph memory"
         )
 
+    # Additional password validation - check for common issues
+    if len(neo4j_password) == 0:
+        raise ValueError("NEO4J_PASSWORD cannot be empty")
+
+    # Check for common password issues (hidden characters, encoding)
+    if neo4j_password.startswith('"') and neo4j_password.endswith('"'):
+        print(
+            "[Graph Memory] Warning: Password appears to be wrapped in quotes, removing them"
+        )
+        neo4j_password = neo4j_password[1:-1]
+    if neo4j_password.startswith("'") and neo4j_password.endswith("'"):
+        print(
+            "[Graph Memory] Warning: Password appears to be wrapped in single quotes, removing them"
+        )
+        neo4j_password = neo4j_password[1:-1]
+
     # Validate Neo4j URI format (should start with neo4j:// or neo4j+s://)
     if not neo4j_uri.startswith(("neo4j://", "neo4j+s://", "bolt://", "bolt+s://")):
         raise ValueError(
@@ -135,7 +151,7 @@ def get_graph_memory() -> Memory:
                 "url": neo4j_uri,
                 "username": neo4j_user,
                 "password": neo4j_password,
-                "database": "neo4j",
+                "database": "neo4j",  # Explicitly set database name
             },
         },
     }
@@ -159,8 +175,16 @@ def get_graph_memory() -> Memory:
             print(
                 f"  - Verify NEO4J_PASSWORD is set (length: {len(neo4j_password)} chars)"
             )
+            print(
+                f"  - Password first char: '{neo4j_password[0] if neo4j_password else 'N/A'}'"
+            )
+            print(
+                f"  - Password last char: '{neo4j_password[-1] if neo4j_password else 'N/A'}'"
+            )
             print("  - Ensure Neo4j Aura instance is running")
             print("  - Check if credentials match Aura dashboard")
+            print("  - Try resetting password in Aura dashboard and updating Railway")
+            print("  - Verify password has no hidden spaces or special encoding issues")
         raise
     except Exception as e:
         print(
