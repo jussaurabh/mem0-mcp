@@ -145,7 +145,7 @@ def get_graph_memory() -> Memory:
 
 def get_default_project() -> Optional[str]:
     """Get default project ID from environment."""
-    return os.environ.get("DEFAULT_PROJECT_ID")
+    return os.environ.get("DEFAULT_PROJECT_ID", "default_project_id")
 
 
 def build_filters(project_id: Optional[str] = None) -> Optional[dict]:
