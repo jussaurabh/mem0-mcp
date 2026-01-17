@@ -58,12 +58,13 @@ def get_mem0_client() -> MemoryClient:
 def get_graph_memory() -> Memory:
     """
     Get self-hosted Memory instance with Qdrant + Neo4j for graph operations.
+    Uses local Docker containers for both Qdrant and Neo4j.
 
     Returns:
         Memory instance configured with:
         - OpenAI LLM for entity/relation extraction
-        - Qdrant Cloud as vector store
-        - Neo4j Aura as graph store
+        - Qdrant (local Docker) as vector store
+        - Neo4j (local Docker) as graph store
 
     Raises:
         ValueError: If required environment variables are missing or invalid
@@ -75,55 +76,26 @@ def get_graph_memory() -> Memory:
             "OPENAI_API_KEY environment variable is required for graph memory"
         )
 
-    qdrant_url = os.environ.get("QDRANT_URL", "").strip()
-    qdrant_api_key = os.environ.get("QDRANT_API_KEY", "").strip()
-    if not qdrant_url or not qdrant_api_key:
+    # Get configuration from environment (for local Docker containers)
+    # Defaults to localhost for local Docker setup
+    qdrant_host = os.environ.get("QDRANT_HOST", "qdrant")
+    qdrant_port = int(os.environ.get("QDRANT_PORT", "6333"))
+    qdrant_collection_name = os.environ.get("QDRANT_COLLECTION_NAME", "memory")
+
+    neo4j_host = os.environ.get("NEO4J_HOST", "localhost")
+    neo4j_port = os.environ.get("NEO4J_PORT", "7687")
+    neo4j_username = os.environ.get("NEO4J_USER", "neo4j")
+    neo4j_password = os.environ.get("NEO4J_PASSWORD", "local_neo4j")
+
+    # Validate Neo4j password is set
+    if not neo4j_password:
         raise ValueError(
-            "QDRANT_URL and QDRANT_API_KEY environment variables are required for graph memory"
+            "NEO4J_PASSWORD environment variable is required for graph memory"
         )
 
-    neo4j_uri = os.environ.get("NEO4J_URI", "").strip()
-    neo4j_user = os.environ.get("NEO4J_USER", "").strip()
-    neo4j_password = os.environ.get("NEO4J_PASSWORD", "").strip()
-    if not neo4j_uri or not neo4j_user or not neo4j_password:
-        raise ValueError(
-            "NEO4J_URI, NEO4J_USER, and NEO4J_PASSWORD environment variables are required for graph memory"
-        )
-
-    # Additional password validation - check for common issues
-    if len(neo4j_password) == 0:
-        raise ValueError("NEO4J_PASSWORD cannot be empty")
-
-    # Check for common password issues (hidden characters, encoding)
-    if neo4j_password.startswith('"') and neo4j_password.endswith('"'):
-        print(
-            "[Graph Memory] Warning: Password appears to be wrapped in quotes, removing them"
-        )
-        neo4j_password = neo4j_password[1:-1]
-    if neo4j_password.startswith("'") and neo4j_password.endswith("'"):
-        print(
-            "[Graph Memory] Warning: Password appears to be wrapped in single quotes, removing them"
-        )
-        neo4j_password = neo4j_password[1:-1]
-
-    # Validate Neo4j URI format (should start with neo4j:// or neo4j+s://)
-    if not neo4j_uri.startswith(("neo4j://", "neo4j+s://", "bolt://", "bolt+s://")):
-        raise ValueError(
-            f"Invalid NEO4J_URI format: {neo4j_uri}. "
-            "Expected format: neo4j+s://<instance-id>.databases.neo4j.io (for Aura) "
-            "or neo4j://<host>:<port> (for self-hosted)"
-        )
-
-    # Log connection attempt (without sensitive data)
-    print(
-        f"[Graph Memory] Connecting to Neo4j at: {neo4j_uri.split('@')[-1] if '@' in neo4j_uri else neo4j_uri[:50]}..."
-    )
-    print("[Graph Memory] Using database: neo4j")
-    print(f"[Graph Memory] Qdrant URL: {qdrant_url[:50]}...")
-
-    # Optional: collection name (defaults to "mem0" if not specified)
-    # If you manually create a collection in Qdrant, set QDRANT_COLLECTION_NAME
-    qdrant_collection_name = os.environ.get("QDRANT_COLLECTION_NAME", "mem0")
+    # Log connection attempt
+    print(f"[Graph Memory] Connecting to Qdrant at {qdrant_host}:{qdrant_port}")
+    print(f"[Graph Memory] Connecting to Neo4j at {neo4j_host}:{neo4j_port}")
 
     config = {
         "version": "v1.1",  # Required for graph_store support
@@ -137,21 +109,18 @@ def get_graph_memory() -> Memory:
         "vector_store": {
             "provider": "qdrant",
             "config": {
-                "url": qdrant_url,
-                "api_key": qdrant_api_key,
+                "host": qdrant_host,
+                "port": qdrant_port,
                 "collection_name": qdrant_collection_name,
-                # mem0 uses text-embedding-3-small by default (1536 dimensions)
-                # If you manually create the collection, set dimensions to 1536
                 "embedding_model_dims": 1536,
             },
         },
         "graph_store": {
             "provider": "neo4j",
             "config": {
-                "url": neo4j_uri,
-                "username": neo4j_user,
+                "url": f"bolt://{neo4j_host}:{neo4j_port}",
+                "username": neo4j_username,
                 "password": neo4j_password,
-                "database": "neo4j",  # Explicitly set database name
             },
         },
     }
@@ -159,37 +128,17 @@ def get_graph_memory() -> Memory:
     try:
         memory = Memory.from_config(config)
         print(
-            "[Graph Memory] Successfully initialized graph memory with Qdrant + Neo4j"
+            "[Graph Memory] Successfully initialized graph memory with Qdrant + Neo4j (local Docker)"
         )
         return memory
-    except ValueError as e:
-        error_msg = str(e)
-        if (
-            "Could not connect to Neo4j" in error_msg
-            or "authentication" in error_msg.lower()
-        ):
-            print(f"[Graph Memory] Neo4j Connection Error: {error_msg}")
-            print("[Graph Memory] Troubleshooting:")
-            print(f"  - Verify NEO4J_URI format: {neo4j_uri[:50]}...")
-            print(f"  - Check NEO4J_USER: {neo4j_user}")
-            print(
-                f"  - Verify NEO4J_PASSWORD is set (length: {len(neo4j_password)} chars)"
-            )
-            print(
-                f"  - Password first char: '{neo4j_password[0] if neo4j_password else 'N/A'}'"
-            )
-            print(
-                f"  - Password last char: '{neo4j_password[-1] if neo4j_password else 'N/A'}'"
-            )
-            print("  - Ensure Neo4j Aura instance is running")
-            print("  - Check if credentials match Aura dashboard")
-            print("  - Try resetting password in Aura dashboard and updating Railway")
-            print("  - Verify password has no hidden spaces or special encoding issues")
-        raise
     except Exception as e:
-        print(
-            f"[Graph Memory] Unexpected error during initialization: {type(e).__name__}: {e}"
-        )
+        print(f"[Graph Memory] Error during initialization: {type(e).__name__}: {e}")
+        print("[Graph Memory] Troubleshooting:")
+        print(f"  - Ensure Qdrant container is running at {qdrant_host}:{qdrant_port}")
+        print(f"  - Ensure Neo4j container is running at {neo4j_host}:{neo4j_port}")
+        print(f"  - Verify NEO4J_USER: {neo4j_username}")
+        print("  - Verify NEO4J_PASSWORD is set correctly")
+        print("  - Check Docker containers are accessible from this host")
         raise
 
 
@@ -310,7 +259,10 @@ def search_memory(
             filters = {"metadata": {"project_id": effective_project}}
 
         results = memory.search(
-            query=query, filters=filters if filters else None, limit=limit
+            query=query,
+            user_id=user_id,
+            filters=filters if filters else None,
+            limit=limit,
         )
     else:
         # Use mem0 cloud (default behavior)
@@ -382,9 +334,11 @@ def update_memory(memory_id: str, content: str, enable_graph: bool = False) -> d
     """
     if enable_graph:
         memory = get_graph_memory()
-        result = memory.update(memory_id=memory_id, text=content)
+        # OSS Memory.update() uses 'data' parameter, not 'text' or 'messages'
+        result = memory.update(memory_id=memory_id, data=content)
     else:
         client = get_mem0_client()
+        # Platform MemoryClient.update() uses 'text' parameter
         result = client.update(memory_id=memory_id, text=content)
 
     return {
@@ -470,7 +424,9 @@ def list_memories(
         if project_id != "all" and effective_project:
             filters = {"metadata": {"project_id": effective_project}}
 
-        results = memory.get_all(filters=filters if filters else None, limit=limit)
+        results = memory.get_all(
+            user_id=user_id, filters=filters if filters else None, limit=limit
+        )
     else:
         # Use mem0 cloud (default behavior)
         client = get_mem0_client()

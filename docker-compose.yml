@@ -1,0 +1,77 @@
+version: "3.8"
+
+services:
+  neo4j:
+    image: neo4j:latest
+    container_name: mem0-mcp-neo4j
+    ports:
+      - "7474:7474" # HTTP
+      - "7687:7687" # Bolt
+    environment:
+      - NEO4J_AUTH=neo4j/local_neo4j
+      - NEO4J_PLUGINS=["apoc"]
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test:
+        ["CMD", "cypher-shell", "-u", "neo4j", "-p", "local_neo4j", "RETURN 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mem0-mcp-network
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: mem0-mcp-qdrant
+    ports:
+      - "6333:6333" # HTTP API
+      - "6334:6334" # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - mem0-mcp-network
+
+  mem0-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mem0-mcp-server
+    ports:
+      - "9000:9000"
+    env_file:
+      - .env
+    environment:
+      # Docker-specific overrides (service names for internal networking)
+      - MCP_HOST=0.0.0.0
+      - QDRANT_HOST=qdrant
+      - NEO4J_HOST=neo4j
+    depends_on:
+      neo4j:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import socket; s = socket.socket(); s.connect(('localhost', 9000)); s.close()",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mem0-mcp-network
+    restart: unless-stopped
+
+volumes:
+  neo4j_data:
+  neo4j_logs:
+  qdrant_data:
+
+networks:
+  mem0-mcp-network:
+    driver: bridge
