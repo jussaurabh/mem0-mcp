@@ -38,7 +38,7 @@ mcp = FastMCP(
     - delete_memory: Remove a memory
     - list_memories: List all memories for a project
     """,
-    host=HTTP_HOST,
+    # host=HTTP_HOST,
     port=HTTP_PORT,
 )
 
@@ -289,7 +289,6 @@ def main():
 ╔══════════════════════════════════════════════════════════════╗
 ║                     mem0-mcp Server                          ║
 ╠══════════════════════════════════════════════════════════════╣
-║  Host: {HTTP_HOST:<54}║
 ║  Port: {HTTP_PORT:<54}║
 ╚══════════════════════════════════════════════════════════════╝
     """)
