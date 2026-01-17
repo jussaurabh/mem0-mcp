@@ -42,11 +42,17 @@ mcp = FastMCP(
     """,
 )
 
+# Global singleton instance for Memory (initialized on first use)
+_memory_instance: Optional[Memory] = None
+
 
 def get_graph_memory() -> Memory:
     """
-    Get self-hosted Memory instance with Qdrant + Neo4j for graph operations.
+    Get or create a singleton Memory instance with Qdrant + Neo4j for graph operations.
     Uses local Docker containers for both Qdrant and Neo4j.
+
+    Reuses the same instance across all tool calls for better performance,
+    avoiding repeated connection overhead to Qdrant and Neo4j.
 
     Returns:
         Memory instance configured with:
@@ -57,6 +63,13 @@ def get_graph_memory() -> Memory:
     Raises:
         ValueError: If required environment variables are missing or invalid
     """
+    global _memory_instance
+
+    # Return existing instance if already initialized
+    if _memory_instance is not None:
+        return _memory_instance
+
+    # First-time initialization
     # Validate required environment variables
     openai_api_key = os.environ.get("OPENAI_API_KEY")
     if not openai_api_key:
@@ -114,11 +127,11 @@ def get_graph_memory() -> Memory:
     }
 
     try:
-        memory = Memory.from_config(config)
+        _memory_instance = Memory.from_config(config)
         print(
-            "[Graph Memory] Successfully initialized graph memory with Qdrant + Neo4j (local Docker)"
+            "[Graph Memory] Successfully initialized singleton Memory instance with Qdrant + Neo4j (local Docker)"
         )
-        return memory
+        return _memory_instance
     except Exception as e:
         print(f"[Graph Memory] Error during initialization: {type(e).__name__}: {e}")
         print("[Graph Memory] Troubleshooting:")
@@ -135,13 +148,18 @@ def get_default_project() -> Optional[str]:
     return os.environ.get("DEFAULT_PROJECT_ID")
 
 
-def build_filters(project_id: Optional[str] = None) -> dict:
-    """Build filters dict for mem0 queries."""
+def build_filters(project_id: Optional[str] = None) -> Optional[dict]:
+    """
+    Build filters dict for mem0 queries.
+
+    mem0 expects metadata filters as simple key-value pairs for the metadata fields.
+    These are automatically scoped to metadata by mem0 internally.
+    """
     effective_project = project_id or get_default_project()
     if effective_project:
-        # mem0 API expects metadata as a nested dict
-        return {"AND": [{"metadata": {"project_id": effective_project}}]}
-    return {}
+        # Simple metadata filter format - mem0 handles the metadata scoping
+        return {"project_id": effective_project}
+    return None
 
 
 # ============================================================================
@@ -223,11 +241,8 @@ def search_memory(
 
     # Use graph memory (Qdrant + Neo4j)
     memory = get_graph_memory()
-    # Build filters
-    effective_project = project_id or get_default_project()
-    filters = {}
-    if effective_project:
-        filters = {"metadata": {"project_id": effective_project}}
+    # Build filters using the helper function
+    filters = build_filters(project_id)
 
     results = memory.search(
         query=query,
@@ -349,11 +364,9 @@ def list_memories(project_id: Optional[str] = None, limit: int = 50) -> dict:
 
     # Use graph memory (Qdrant + Neo4j)
     memory = get_graph_memory()
-    # Build filters for graph memory
-    effective_project = project_id or get_default_project()
-    filters = {}
-    if project_id != "all" and effective_project:
-        filters = {"metadata": {"project_id": effective_project}}
+    # Build filters using the helper function
+    # Handle "all" case by not passing project_id
+    filters = build_filters(None if project_id == "all" else project_id)
 
     results = memory.get_all(
         user_id=user_id, filters=filters if filters else None, limit=limit

@@ -37,6 +37,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: mem0-mcp:0.0.2
     container_name: mem0-mcp-server
     ports:
       - "9000:9000"

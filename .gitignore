@@ -9,3 +9,6 @@ wheels/
 # Virtual environments
 .venv
 .env
+
+# OpenMemory - IDE/Assistant specific rules
+.cursor/rules/openmemory.mdc
